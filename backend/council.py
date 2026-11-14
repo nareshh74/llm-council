@@ -18,7 +18,7 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(COUNCIL_MODELS, messages, use_tools=True)
 
     # Format results
     stage1_results = []
