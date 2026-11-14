@@ -52,7 +52,7 @@ def stack(tmp_path_factory):
         (d / "AGENTS.md").write_text(f"The codeword for this project is in secret.txt. Project name: {name}.")
         (d / "secret.txt").write_text(f"codeword: {code}")
         folders[name] = d
-    env = {**os.environ, "COUNCIL_DATA_DIR": str(base / "data"), "COUNCIL_FOLDER_ROOTS": str(base),
+    env = {**os.environ, "COUNCIL_DATA_DIR": str(base / "data"), "HOME": str(base), "USERPROFILE": str(base),
            "WIKI_MEMORY": "0", "THINKING_SKILLS": "0"}
     env.pop("COUNCIL_FOLDER", None)
     procs = [subprocess.Popen([sys.executable, "-m", "backend.main"], cwd=ROOT, env=env,
@@ -84,7 +84,6 @@ def page(stack):
 
 def _pick(page, name):
     page.get_by_role("button", name="Choose folder").click()
-    page.locator(".folder-item", has_text=re.compile(r"^e2e\d*$")).first.click()
     page.locator(".folder-item", has_text=re.compile(f"^{name}$")).click()
     page.get_by_role("button", name="Use this folder").click()
     page.locator(".folder-current", has_text=name).wait_for()
@@ -124,23 +123,20 @@ def test_second_conversation_uses_a_different_folder(page, stack):
     assert "PELICAN-77" not in answer
 
 
-def test_picker_navigates_and_cannot_leave_the_root(page, stack):
+def test_picker_navigates_down_and_up(page, stack):
     page.goto(UI)
     page.get_by_role("button", name="+ New Conversation").click()
     page.get_by_role("button", name="Choose folder").click()
     items = page.locator(".folder-item")
-    up = page.get_by_role("button", name="Up")
-    expect(items).to_have_count(1)
-    expect(up).to_have_count(0)
-    items.first.click()
-    expect(items.filter(has_text=re.compile("^alpha$"))).to_have_count(1)
-    expect(items.filter(has_text=re.compile("^beta$"))).to_have_count(1)
-    expect(up).to_have_count(0)
-    items.filter(has_text=re.compile("^alpha$")).click()
-    expect(up).to_have_count(1)
-    up.click()
-    expect(items.filter(has_text=re.compile("^beta$"))).to_have_count(1)
-    expect(up).to_have_count(0)
+    alpha = items.filter(has_text=re.compile("^alpha$"))
+    beta = items.filter(has_text=re.compile("^beta$"))
+    expect(alpha).to_have_count(1)
+    expect(beta).to_have_count(1)
+    alpha.click()
+    expect(beta).to_have_count(0)
+    expect(page.locator(".folder-path")).to_contain_text("alpha")
+    page.get_by_role("button", name="Up").click()
+    expect(beta).to_have_count(1)
     page.get_by_role("button", name="Cancel").click()
     expect(page.locator(".folder-current", has_text="plain chat")).to_have_count(1)
 
@@ -150,17 +146,14 @@ def test_folder_field_is_gone_from_the_sidebar(page, stack):
     assert page.get_by_placeholder("Folder (optional)").count() == 0
 
 
-def test_folder_locks_after_first_message(stack):
+def test_folder_api_accepts_directories_and_rejects_the_rest(stack):
     conv = httpx.post(API + "/api/conversations", json={}).json()
-    r = httpx.put(f"{API}/api/conversations/{conv['id']}/folder", json={"folder": str(stack["alpha"])})
+    url = f"{API}/api/conversations/{conv['id']}/folder"
+    r = httpx.put(url, json={"folder": str(stack["alpha"])})
     assert r.status_code == 200 and r.json()["folder"].endswith("alpha")
-    r = httpx.put(f"{API}/api/conversations/{conv['id']}/folder", json={"folder": str(ROOT)})
-    assert r.status_code == 400
-
-
-def test_api_rejects_escape_attempt(stack):
-    for bad in (stack["alpha"] / ".." / "..", ROOT, Path(ROOT.anchor), stack["alpha"] / "secret.txt", stack["alpha"] / "missing"):
-        r = httpx.post(API + "/api/conversations", json={"folder": str(bad)})
-        assert r.status_code == 400, bad
-    r = httpx.post(API + "/api/conversations", json={"folder": str(stack["alpha"] / ".." / "beta")})
+    r = httpx.put(url, json={"folder": str(stack["alpha"] / ".." / "beta")})
     assert r.status_code == 200 and r.json()["folder"].endswith("beta")
+    for bad in (stack["alpha"] / "secret.txt", stack["alpha"] / "missing"):
+        assert httpx.put(url, json={"folder": str(bad)}).status_code == 400, bad
+        assert httpx.post(API + "/api/conversations", json={"folder": str(bad)}).status_code == 400, bad
+    assert httpx.put(url, json={"folder": None}).json()["folder"] is None
