@@ -26,4 +26,4 @@ OPENROUTER_API_URL = (
 )
 
 # Data directory for conversation storage
-DATA_DIR = "data/conversations"
+DATA_DIR = os.getenv("COUNCIL_DATA_DIR", "data/conversations")

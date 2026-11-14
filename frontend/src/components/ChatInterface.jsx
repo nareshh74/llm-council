@@ -50,6 +50,9 @@ export default function ChatInterface({
 
   return (
     <div className="chat-interface">
+      {conversation.folder && (
+        <div className="folder-banner">Folder: {conversation.folder}</div>
+      )}
       <div className="messages-container">
         {conversation.messages.length === 0 ? (
           <div className="empty-state">

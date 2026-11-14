@@ -12,3 +12,6 @@ dependencies = [
     "pydantic>=2.9.0",
     "mcp>=1.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8", "playwright>=1.50"]

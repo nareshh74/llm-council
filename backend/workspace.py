@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from pathlib import Path
 
 FOLDER = os.getenv("COUNCIL_FOLDER", "")
+ROOTS = [r for r in os.getenv("COUNCIL_FOLDER_ROOTS", "").split(os.pathsep) if r]
 MAX_OUT = 20000
 current: ContextVar = ContextVar("workspace", default=None)
 
@@ -117,14 +118,24 @@ class Workspace:
         return out[:MAX_OUT]
 
 
+def resolve_folder(folder: str) -> str:
+    """Return the resolved folder if it is a directory under COUNCIL_FOLDER or a COUNCIL_FOLDER_ROOTS entry."""
+    p = Path(folder).resolve()
+    allowed = [Path(r).resolve() for r in ROOTS + ([FOLDER] if FOLDER else [])]
+    if not p.is_dir() or not any(p.is_relative_to(a) for a in allowed):
+        raise ValueError("folder must be an existing directory under COUNCIL_FOLDER_ROOTS")
+    return str(p)
+
+
 @asynccontextmanager
-async def open_workspace():
-    """Load the configured folder for one request; yields None when COUNCIL_FOLDER is unset."""
-    if not FOLDER or not Path(FOLDER).is_dir():
+async def open_workspace(folder: str = ""):
+    """Load a conversation's folder (default COUNCIL_FOLDER) for one request; yields None when there is none."""
+    folder = folder or FOLDER
+    if not folder or not Path(folder).is_dir():
         yield None
         return
     async with AsyncExitStack() as stack:
-        ws = Workspace(Path(FOLDER))
+        ws = Workspace(Path(folder))
         await ws.load(stack)
         token = current.set(ws)
         try:

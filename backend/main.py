@@ -4,14 +4,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
 
 from . import storage
 from . import knowledge
-from .workspace import open_workspace
+from .workspace import open_workspace, resolve_folder
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
@@ -28,7 +28,7 @@ app.add_middleware(
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
-    pass
+    folder: Optional[str] = None
 
 
 class SendMessageRequest(BaseModel):
@@ -41,6 +41,7 @@ class ConversationMetadata(BaseModel):
     id: str
     created_at: str
     title: str
+    folder: Optional[str] = None
     message_count: int
 
 
@@ -49,6 +50,7 @@ class Conversation(BaseModel):
     id: str
     created_at: str
     title: str
+    folder: Optional[str] = None
     messages: List[Dict[str, Any]]
 
 
@@ -68,7 +70,13 @@ async def list_conversations():
 async def create_conversation(request: CreateConversationRequest):
     """Create a new conversation."""
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id)
+    folder = None
+    if request.folder:
+        try:
+            folder = resolve_folder(request.folder)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    conversation = storage.create_conversation(conversation_id, folder)
     return conversation
 
 
@@ -104,7 +112,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         storage.update_conversation_title(conversation_id, title)
 
     # Run the 3-stage council process
-    async with open_workspace():
+    async with open_workspace(conversation.get("folder") or ""):
         stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
             knowledge.augment(request.content)
         )
@@ -154,7 +162,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             query = knowledge.augment(request.content)
-            async with open_workspace():
+            async with open_workspace(conversation.get("folder") or ""):
                 stage1_results = await stage1_collect_responses(query)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 

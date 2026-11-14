@@ -19,16 +19,17 @@ export const api = {
   /**
    * Create a new conversation.
    */
-  async createConversation() {
+  async createConversation(folder) {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(folder ? { folder } : {}),
     });
     if (!response.ok) {
-      throw new Error('Failed to create conversation');
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || 'Failed to create conversation');
     }
     return response.json();
   },
