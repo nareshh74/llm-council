@@ -5,6 +5,7 @@ Playwright and Edge or Chromium. Run: python -m pytest tests/e2e -s
 """
 
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -15,6 +16,7 @@ import httpx
 import pytest
 
 sync_api = pytest.importorskip("playwright.sync_api")
+expect = sync_api.expect
 
 ROOT = Path(__file__).resolve().parents[2]
 API = "http://localhost:8001"
@@ -80,11 +82,18 @@ def page(stack):
         browser.close()
 
 
-def _ask(page, folder, question):
+def _pick(page, name):
+    page.get_by_role("button", name="Choose folder").click()
+    page.locator(".folder-item", has_text=re.compile(r"^e2e\d*$")).first.click()
+    page.locator(".folder-item", has_text=re.compile(f"^{name}$")).click()
+    page.get_by_role("button", name="Use this folder").click()
+    page.locator(".folder-current", has_text=name).wait_for()
+
+
+def _ask(page, name, question):
     page.goto(UI)
-    page.get_by_placeholder("Folder (optional)").fill(str(folder))
     page.get_by_role("button", name="+ New Conversation").click()
-    page.locator(".folder-banner").wait_for()
+    _pick(page, name)
     page.locator(".message-input").fill(question)
     page.get_by_role("button", name="Send").click()
     page.locator(".stage3 .final-text").wait_for(timeout=280_000)
@@ -95,7 +104,7 @@ Q = "Use your tools to read secret.txt. What is the codeword? Answer with just t
 
 
 def test_conversation_runs_in_its_own_folder(page, stack):
-    answer = _ask(page, stack["alpha"], Q)
+    answer = _ask(page, "alpha", Q)
     assert "PELICAN-77" in answer
     assert "WALRUS-42" not in answer
     assert page.locator(".stage1 .tab").count() >= 2, "expected several council members in stage 1"
@@ -110,18 +119,43 @@ def test_conversation_runs_in_its_own_folder(page, stack):
 
 
 def test_second_conversation_uses_a_different_folder(page, stack):
-    answer = _ask(page, stack["beta"], Q)
+    answer = _ask(page, "beta", Q)
     assert "WALRUS-42" in answer
     assert "PELICAN-77" not in answer
 
 
-def test_folder_outside_allowed_roots_is_rejected(page, stack):
+def test_picker_navigates_and_cannot_leave_the_root(page, stack):
     page.goto(UI)
-    page.get_by_placeholder("Folder (optional)").fill(str(ROOT))
     page.get_by_role("button", name="+ New Conversation").click()
-    page.locator(".folder-error").wait_for()
-    assert "existing directory under" in page.locator(".folder-error").inner_text()
-    assert page.locator(".folder-banner").count() == 0
+    page.get_by_role("button", name="Choose folder").click()
+    items = page.locator(".folder-item")
+    up = page.get_by_role("button", name="Up")
+    expect(items).to_have_count(1)
+    expect(up).to_have_count(0)
+    items.first.click()
+    expect(items.filter(has_text=re.compile("^alpha$"))).to_have_count(1)
+    expect(items.filter(has_text=re.compile("^beta$"))).to_have_count(1)
+    expect(up).to_have_count(0)
+    items.filter(has_text=re.compile("^alpha$")).click()
+    expect(up).to_have_count(1)
+    up.click()
+    expect(items.filter(has_text=re.compile("^beta$"))).to_have_count(1)
+    expect(up).to_have_count(0)
+    page.get_by_role("button", name="Cancel").click()
+    expect(page.locator(".folder-current", has_text="plain chat")).to_have_count(1)
+
+
+def test_folder_field_is_gone_from_the_sidebar(page, stack):
+    page.goto(UI)
+    assert page.get_by_placeholder("Folder (optional)").count() == 0
+
+
+def test_folder_locks_after_first_message(stack):
+    conv = httpx.post(API + "/api/conversations", json={}).json()
+    r = httpx.put(f"{API}/api/conversations/{conv['id']}/folder", json={"folder": str(stack["alpha"])})
+    assert r.status_code == 200 and r.json()["folder"].endswith("alpha")
+    r = httpx.put(f"{API}/api/conversations/{conv['id']}/folder", json={"folder": str(ROOT)})
+    assert r.status_code == 400
 
 
 def test_api_rejects_escape_attempt(stack):

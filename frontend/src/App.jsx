@@ -40,19 +40,25 @@ function App() {
     }
   };
 
-  const handleNewConversation = async (folder) => {
+  const handleNewConversation = async () => {
     try {
-      const newConv = await api.createConversation(folder);
+      const newConv = await api.createConversation();
       setConversations([
         { id: newConv.id, created_at: newConv.created_at, folder: newConv.folder, message_count: 0 },
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
-      return null;
     } catch (error) {
       console.error('Failed to create conversation:', error);
-      return error.message;
     }
+  };
+
+  const handleSetFolder = async (folder) => {
+    const updated = await api.setFolder(currentConversationId, folder);
+    setCurrentConversation(updated);
+    setConversations((prev) =>
+      prev.map((c) => (c.id === updated.id ? { ...c, folder: updated.folder } : c))
+    );
   };
 
   const handleSelectConversation = (id) => {
@@ -194,6 +200,7 @@ function App() {
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
+        onSetFolder={handleSetFolder}
         isLoading={isLoading}
       />
     </div>
