@@ -2,6 +2,7 @@
 
 import httpx
 from typing import List, Dict, Any, Optional
+from .thinking import PROMPT as THINKING
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
 
@@ -25,6 +26,9 @@ async def query_model(
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
+
+    if THINKING:
+        messages = [{"role": "system", "content": THINKING}] + messages
 
     payload = {
         "model": model,
