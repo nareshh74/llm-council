@@ -164,3 +164,13 @@ Frontend: Display with tabs + validation UI
 ```
 
 The entire flow is async/parallel where possible to minimize latency.
+
+## Folders, MCP and skills
+
+- `COUNCIL_FOLDER` sets a default folder for stage 1 (AGENTS.md/CLAUDE.md, `skills/` or `.claude/skills/`, `.mcp.json`, read-only file tools).
+- Each conversation can have its own folder: `POST /api/conversations {"folder": ...}` (or the Folder box in the sidebar). It must be a directory under `COUNCIL_FOLDER` or a `COUNCIL_FOLDER_ROOTS` entry (path-separator list). The folder is never taken from a message, because `.mcp.json` can launch commands.
+- `COUNCIL_DATA_DIR` overrides where conversations are stored (used by the E2E test).
+
+## E2E test
+
+`python -m pytest tests/e2e -s` drives the real UI (Playwright, Edge or Chromium) against the real backend and live models. It needs a model gateway, takes about 100s, and skips if port 8001 is busy.

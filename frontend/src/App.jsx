@@ -40,16 +40,18 @@ function App() {
     }
   };
 
-  const handleNewConversation = async () => {
+  const handleNewConversation = async (folder) => {
     try {
-      const newConv = await api.createConversation();
+      const newConv = await api.createConversation(folder);
       setConversations([
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
+        { id: newConv.id, created_at: newConv.created_at, folder: newConv.folder, message_count: 0 },
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
+      return null;
     } catch (error) {
       console.error('Failed to create conversation:', error);
+      return error.message;
     }
   };
 

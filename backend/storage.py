@@ -18,7 +18,7 @@ def get_conversation_path(conversation_id: str) -> str:
     return os.path.join(DATA_DIR, f"{conversation_id}.json")
 
 
-def create_conversation(conversation_id: str) -> Dict[str, Any]:
+def create_conversation(conversation_id: str, folder: Optional[str] = None) -> Dict[str, Any]:
     """
     Create a new conversation.
 
@@ -34,6 +34,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Conversation",
+        "folder": folder,
         "messages": []
     }
 
@@ -98,6 +99,7 @@ def list_conversations() -> List[Dict[str, Any]]:
                     "id": data["id"],
                     "created_at": data["created_at"],
                     "title": data.get("title", "New Conversation"),
+                    "folder": data.get("folder"),
                     "message_count": len(data["messages"])
                 })
 
