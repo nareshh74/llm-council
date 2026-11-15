@@ -6,6 +6,20 @@ import Stage3 from './Stage3';
 import FolderPicker from './FolderPicker';
 import './ChatInterface.css';
 
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? ts : `${ts}Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+function messageText(msg) {
+  return msg.role === 'user' ? msg.content || '' : msg.stage3?.response || '';
+}
+
 export default function ChatInterface({
   conversation,
   onSendMessage,
@@ -13,15 +27,40 @@ export default function ChatInterface({
   isLoading,
 }) {
   const [input, setInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [position, setPosition] = useState({ key: '', index: 0 });
   const messagesEndRef = useRef(null);
+  const q = search.trim().toLowerCase();
+  const matches = q
+    ? (conversation?.messages || []).flatMap((m, i) =>
+        messageText(m).toLowerCase().includes(q) ? [i] : []
+      )
+    : [];
+  const searchKey = `${conversation?.id}|${q}`;
+  const current = position.key === searchKey ? Math.min(position.index, Math.max(matches.length - 1, 0)) : 0;
+  const currentMsg = matches[current];
+
+  useEffect(() => {
+    if (currentMsg !== undefined) {
+      document
+        .querySelector(`[data-msg-index="${currentMsg}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentMsg, searchKey]);
+
+  const step = (delta) => {
+    if (matches.length) {
+      setPosition({ key: searchKey, index: (current + delta + matches.length) % matches.length });
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [conversation]);
+    if (!q) scrollToBottom();
+  }, [conversation, q]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -59,6 +98,34 @@ export default function ChatInterface({
           <div className="folder-banner">Folder: {conversation.folder}</div>
         )
       )}
+      {conversation.messages.length > 0 && (
+        <div className="message-search">
+          <input
+            type="search"
+            className="message-search-input"
+            placeholder="Search in this conversation"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                step(e.shiftKey ? -1 : 1);
+              }
+            }}
+          />
+          {q && (
+            <span className="message-search-count">
+              {matches.length ? `${current + 1} of ${matches.length}` : 'No matches'}
+            </span>
+          )}
+          <button className="folder-btn" disabled={!matches.length} onClick={() => step(-1)}>
+            Prev
+          </button>
+          <button className="folder-btn" disabled={!matches.length} onClick={() => step(1)}>
+            Next
+          </button>
+        </div>
+      )}
       <div className="messages-container">
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
@@ -67,7 +134,13 @@ export default function ChatInterface({
           </div>
         ) : (
           conversation.messages.map((msg, index) => (
-            <div key={index} className="message-group">
+            <div
+              key={index}
+              data-msg-index={index}
+              className={`message-group${matches.includes(index) ? ' search-hit' : ''}${
+                currentMsg === index ? ' search-current' : ''
+              }`}
+            >
               {msg.role === 'user' ? (
                 <div className="user-message">
                   <div className="message-label">You</div>
@@ -76,6 +149,9 @@ export default function ChatInterface({
                       <Markdown>{msg.content}</Markdown>
                     </div>
                   </div>
+                  {formatTime(msg.created_at) && (
+                    <div className="message-time">{formatTime(msg.created_at)}</div>
+                  )}
                 </div>
               ) : (
                 <div className="assistant-message">
@@ -113,6 +189,9 @@ export default function ChatInterface({
                     </div>
                   )}
                   {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                  {formatTime(msg.created_at) && (
+                    <div className="message-time">{formatTime(msg.created_at)}</div>
+                  )}
                 </div>
               )}
             </div>
