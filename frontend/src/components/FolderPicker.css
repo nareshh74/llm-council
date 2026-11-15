@@ -1,0 +1,70 @@
+.folder-picker {
+  padding: 8px 24px;
+  font-size: 13px;
+  background: #f5f9ff;
+  border-bottom: 1px solid #e0e8f5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-picker.open {
+  display: block;
+}
+
+.folder-current {
+  color: #4a90e2;
+  word-break: break-all;
+}
+
+.folder-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.folder-btn {
+  padding: 4px 10px;
+  border: 1px solid #ccd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.folder-btn.primary {
+  background: #4a90e2;
+  border-color: #4a90e2;
+  color: #fff;
+}
+
+.folder-list {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e0e8f5;
+  border-radius: 4px;
+}
+
+.folder-item {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.folder-item:hover {
+  background: #eef4ff;
+}
+
+.folder-empty {
+  padding: 6px 10px;
+  color: #999;
+}
+
+.folder-error {
+  color: #c0392b;
+  font-size: 12px;
+}

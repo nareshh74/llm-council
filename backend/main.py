@@ -11,7 +11,7 @@ import asyncio
 
 from . import storage
 from . import knowledge
-from .workspace import open_workspace, resolve_folder
+from .workspace import open_workspace, resolve_folder, browse
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
@@ -77,6 +77,36 @@ async def create_conversation(request: CreateConversationRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     conversation = storage.create_conversation(conversation_id, folder)
+    return conversation
+
+
+class SetFolderRequest(BaseModel):
+    """Set (or clear, with null) the folder of a conversation that has no messages yet."""
+    folder: Optional[str] = None
+
+
+@app.get("/api/browse")
+async def browse_folders(path: str = ""):
+    """List subfolders for the folder picker, limited to the allowed roots."""
+    try:
+        return browse(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/conversations/{conversation_id}/folder", response_model=Conversation)
+async def set_conversation_folder(conversation_id: str, request: SetFolderRequest):
+    """Choose the folder a conversation runs in. Only allowed before the first message."""
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation["messages"]:
+        raise HTTPException(status_code=409, detail="Folder can only be changed before the first message")
+    try:
+        conversation["folder"] = resolve_folder(request.folder) if request.folder else None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    storage.save_conversation(conversation)
     return conversation
 
 

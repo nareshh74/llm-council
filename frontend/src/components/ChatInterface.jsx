@@ -3,11 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import FolderPicker from './FolderPicker';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onSetFolder,
   isLoading,
 }) {
   const [input, setInput] = useState('');
@@ -50,8 +52,12 @@ export default function ChatInterface({
 
   return (
     <div className="chat-interface">
-      {conversation.folder && (
-        <div className="folder-banner">Folder: {conversation.folder}</div>
+      {conversation.messages.length === 0 ? (
+        <FolderPicker folder={conversation.folder} onChange={onSetFolder} />
+      ) : (
+        conversation.folder && (
+          <div className="folder-banner">Folder: {conversation.folder}</div>
+        )
       )}
       <div className="messages-container">
         {conversation.messages.length === 0 ? (

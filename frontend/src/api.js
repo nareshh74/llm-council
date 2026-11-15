@@ -19,17 +19,44 @@ export const api = {
   /**
    * Create a new conversation.
    */
-  async createConversation(folder) {
+  async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(folder ? { folder } : {}),
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to create conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * List subfolders for the folder picker (empty path lists the allowed roots).
+   */
+  async browse(path = '') {
+    const response = await fetch(`${API_BASE}/api/browse?path=${encodeURIComponent(path)}`);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || 'Failed to browse folders');
+    }
+    return response.json();
+  },
+
+  /**
+   * Set the folder of a conversation that has no messages yet (null clears it).
+   */
+  async setFolder(conversationId, folder) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/folder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder }),
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || 'Failed to create conversation');
+      throw new Error(body.detail || 'Failed to set folder');
     }
     return response.json();
   },

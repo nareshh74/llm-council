@@ -168,7 +168,7 @@ The entire flow is async/parallel where possible to minimize latency.
 ## Folders, MCP and skills
 
 - `COUNCIL_FOLDER` sets a default folder for stage 1 (AGENTS.md/CLAUDE.md, `skills/` or `.claude/skills/`, `.mcp.json`, read-only file tools).
-- Each conversation can have its own folder: `POST /api/conversations {"folder": ...}` (or the Folder box in the sidebar). It must be a directory under `COUNCIL_FOLDER` or a `COUNCIL_FOLDER_ROOTS` entry (path-separator list). The folder is never taken from a message, because `.mcp.json` can launch commands.
+- Each conversation can have its own folder: `POST /api/conversations {"folder": ...}` (or the folder picker in the chat window, which starts at `COUNCIL_FOLDER` or the home folder and works until the first message is sent). Any existing directory is accepted, and the API has no auth, so run the backend on a trusted machine only: a folder's `.mcp.json` can launch commands. The folder is never taken from a message.
 - `COUNCIL_DATA_DIR` overrides where conversations are stored (used by the E2E test).
 
 ## E2E test

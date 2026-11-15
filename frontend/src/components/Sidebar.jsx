@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -7,27 +6,11 @@ export default function Sidebar({
   onSelectConversation,
   onNewConversation,
 }) {
-  const [folder, setFolder] = useState('');
-  const [error, setError] = useState('');
-
-  const create = async () => {
-    const err = await onNewConversation(folder.trim());
-    setError(err || '');
-    if (!err) setFolder('');
-  };
-
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <h1>LLM Council</h1>
-        <input
-          className="folder-input"
-          placeholder="Folder (optional)"
-          value={folder}
-          onChange={(e) => setFolder(e.target.value)}
-        />
-        {error && <div className="folder-error">{error}</div>}
-        <button className="new-conversation-btn" onClick={create}>
+        <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>
       </div>

@@ -8,7 +8,6 @@ from contextvars import ContextVar
 from pathlib import Path
 
 FOLDER = os.getenv("COUNCIL_FOLDER", "")
-ROOTS = [r for r in os.getenv("COUNCIL_FOLDER_ROOTS", "").split(os.pathsep) if r]
 MAX_OUT = 20000
 current: ContextVar = ContextVar("workspace", default=None)
 
@@ -119,12 +118,25 @@ class Workspace:
 
 
 def resolve_folder(folder: str) -> str:
-    """Return the resolved folder if it is a directory under COUNCIL_FOLDER or a COUNCIL_FOLDER_ROOTS entry."""
+    """Return the resolved folder if it is an existing directory."""
     p = Path(folder).resolve()
-    allowed = [Path(r).resolve() for r in ROOTS + ([FOLDER] if FOLDER else [])]
-    if not p.is_dir() or not any(p.is_relative_to(a) for a in allowed):
-        raise ValueError("folder must be an existing directory under COUNCIL_FOLDER_ROOTS")
+    if not p.is_dir():
+        raise ValueError("folder must be an existing directory")
     return str(p)
+
+
+def browse(path: str = "") -> dict:
+    """List the subfolders of path for the folder picker. Empty path starts at COUNCIL_FOLDER or the home folder."""
+    p = Path(resolve_folder(path or FOLDER or str(Path.home())))
+    skip = {"node_modules", "__pycache__"}
+    dirs = []
+    for c in sorted(p.iterdir(), key=lambda x: x.name.lower()):
+        try:
+            if c.is_dir() and not c.name.startswith(".") and c.name not in skip:
+                dirs.append({"name": c.name, "path": str(c)})
+        except OSError:
+            continue
+    return {"path": str(p), "parent": str(p.parent) if p.parent != p else None, "dirs": dirs[:500]}
 
 
 @asynccontextmanager
