@@ -52,8 +52,10 @@ def stack(tmp_path_factory):
         (d / "AGENTS.md").write_text(f"The codeword for this project is in secret.txt. Project name: {name}.")
         (d / "secret.txt").write_text(f"codeword: {code}")
         folders[name] = d
+    archify = Path.home() / ".claude/skills/archify/bin/archify.mjs"
     env = {**os.environ, "COUNCIL_DATA_DIR": str(base / "data"), "HOME": str(base), "USERPROFILE": str(base),
-           "WIKI_MEMORY": "0", "THINKING_SKILLS": "0"}
+           "WIKI_MEMORY": "0", "THINKING_SKILLS": "0", "ARCHIFY_BIN": str(archify),
+           "COUNCIL_DIAGRAM_DIR": str(base / "diagrams")}
     env.pop("COUNCIL_FOLDER", None)
     procs = [subprocess.Popen([sys.executable, "-m", "backend.main"], cwd=ROOT, env=env,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
@@ -157,3 +159,52 @@ def test_folder_api_accepts_directories_and_rejects_the_rest(stack):
         assert httpx.put(url, json={"folder": str(bad)}).status_code == 400, bad
         assert httpx.post(API + "/api/conversations", json={"folder": str(bad)}).status_code == 400, bad
     assert httpx.put(url, json={"folder": None}).json()["folder"] is None
+
+
+def test_follow_up_uses_the_earlier_turn(page, stack):
+    _ask(page, "alpha", Q)
+    page.locator(".message-input").fill("Without using tools, repeat the codeword from your previous answer in lower case.")
+    page.get_by_role("button", name="Send").click()
+    expect(page.locator(".stage3 .final-text")).to_have_count(2, timeout=280_000)
+    assert "pelican-77" in page.locator(".stage3 .final-text").nth(1).inner_text().lower()
+    assert page.locator(".user-message").count() == 2
+
+
+def test_markdown_renders_in_the_ui(page, stack):
+    page.goto(UI)
+    page.get_by_role("button", name="+ New Conversation").click()
+    page.locator(".message-input").fill(
+        "Reply with exactly this markdown and nothing else:\n\n"
+        "| Name | Role |\n|---|---|\n| Ada | Engineer |\n\n"
+        "- **bold item**\n- second item\n\n```python\nprint('hi')\n```"
+    )
+    page.get_by_role("button", name="Send").click()
+    final = page.locator(".stage3 .final-text")
+    expect(final).to_have_count(1, timeout=280_000)
+    expect(final.locator("table")).to_have_count(1)
+    expect(final.locator("th")).to_have_text(["Name", "Role"])
+    expect(final.locator("li strong")).to_have_count(1)
+    expect(final.locator("pre code")).to_have_count(1)
+
+
+def test_chairman_draws_a_diagram_that_renders(page, stack):
+    page.goto(UI)
+    page.get_by_role("button", name="+ New Conversation").click()
+    page.locator(".message-input").fill(
+        "Explain visually how a web request flows from a browser through a CDN and a load balancer "
+        "to an API server and a database. You must call draw_diagram and show the diagram."
+    )
+    page.get_by_role("button", name="Send").click()
+    frame = page.locator(".stage3 .diagram-frame")
+    expect(frame).to_have_count(1, timeout=280_000)
+    src = frame.get_attribute("src")
+    assert "/api/diagrams/" in src
+    body = httpx.get(src)
+    assert body.status_code == 200 and "<svg" in body.text
+    inner = page.frame_locator(".stage3 .diagram-frame")
+    expect(inner.locator("svg").first).to_be_visible()
+
+
+def test_diagram_route_rejects_bad_ids(stack):
+    assert httpx.get(API + "/api/diagrams/..%2f..%2fsecret").status_code == 404
+    assert httpx.get(API + "/api/diagrams/000000000000").status_code == 404

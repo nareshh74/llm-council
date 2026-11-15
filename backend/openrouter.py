@@ -6,6 +6,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 from .thinking import PROMPT as THINKING
 from .workspace import current as workspace
+from . import diagrams
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
 MAX_TOOL_ROUNDS = 8
@@ -15,7 +16,8 @@ async def query_model(
     model: str,
     messages: List[Dict[str, str]],
     timeout: float = 120.0,
-    use_tools: bool = False
+    use_tools: bool = False,
+    draw: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -24,7 +26,8 @@ async def query_model(
         model: OpenRouter model identifier (e.g., "openai/gpt-4o")
         messages: List of message dicts with 'role' and 'content'
         timeout: Request timeout in seconds
-        use_tools: Give the model the workspace folder context and tools (if COUNCIL_FOLDER is set)
+        use_tools: Give the model the workspace folder context and tools (if a folder is set)
+        draw: Give the model the draw_diagram tool
 
     Returns:
         Response dict with 'content' and optional 'reasoning_details', or None if failed
@@ -35,13 +38,15 @@ async def query_model(
     }
 
     ws = workspace.get() if use_tools else None
+    drawn = []
     system = "\n\n".join(x for x in (THINKING, ws and ws.context) if x)
     if system:
         messages = [{"role": "system", "content": system}] + messages
 
     payload = {"model": model, "messages": messages}
-    if ws:
-        payload["tools"] = ws.schemas
+    tools = (ws.schemas if ws else []) + ([diagrams.TOOL_SCHEMA] if draw else [])
+    if tools:
+        payload["tools"] = tools
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -52,10 +57,11 @@ async def query_model(
                 response.raise_for_status()
                 message = response.json()['choices'][0]['message']
                 calls = message.get('tool_calls')
-                if not (calls and ws and "tools" in payload):
+                if not (calls and "tools" in payload):
                     return {
                         'content': message.get('content'),
-                        'reasoning_details': message.get('reasoning_details')
+                        'reasoning_details': message.get('reasoning_details'),
+                        'diagrams': drawn
                     }
                 results = []
                 for c in calls:
@@ -63,8 +69,18 @@ async def query_model(
                         args = json.loads(c['function'].get('arguments') or '{}')
                     except ValueError:
                         args = {}
-                    results.append({"role": "tool", "tool_call_id": c['id'],
-                                    "content": await ws.call(c['function']['name'], args)})
+                    name = c['function']['name']
+                    if name == "draw_diagram":
+                        try:
+                            did = await asyncio.to_thread(diagrams.draw, args)
+                            drawn.append(did)
+                            out = f"Diagram created. Reference it in your answer as ![caption](diagram:{did})"
+                        except ValueError as e:
+                            print(f"draw_diagram failed: {e} | args={json.dumps(args)[:600]}")
+                            out = f"error: {e}"
+                    else:
+                        out = await ws.call(name, args) if ws else f"unknown tool {name}"
+                    results.append({"role": "tool", "tool_call_id": c['id'], "content": out})
                 payload["messages"] = payload["messages"] + [
                     {"role": "assistant", "content": message.get('content'), "tool_calls": calls}
                 ] + results
