@@ -13,6 +13,7 @@ from . import storage
 from . import knowledge
 from .workspace import open_workspace, resolve_folder, browse
 from . import diagrams
+from . import activity
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
@@ -193,54 +194,80 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     is_first_message = len(conversation["messages"]) == 0
 
     async def event_generator():
+        sink = activity.Sink()
+
+        async def pipeline():
+            activity.sink.set(sink)
+            try:
+                storage.add_user_message(conversation_id, request.content)
+
+                title_task = None
+                if is_first_message:
+                    token = activity.stage.set("title")
+                    title_task = asyncio.create_task(generate_conversation_title(request.content))
+                    activity.stage.reset(token)
+
+                activity.stage.set("stage1")
+                sink.put({'type': 'stage1_start'})
+                activity.stage.set("memory")
+                mem_id = activity.new_id()
+                activity.emit("memory", id=mem_id, status="running")
+                query = await asyncio.to_thread(knowledge.augment, request.content)
+                activity.emit("memory", id=mem_id, status="done", chars=max(len(query) - len(request.content), 0))
+
+                activity.stage.set("stage1")
+                async with open_workspace(conversation.get("folder") or "") as ws:
+                    if ws:
+                        activity.emit("workspace", folder=ws.root.name, tools=len(ws.mcp), skills=len(ws.skills))
+                    stage1_results = await stage1_collect_responses(query, conversation["messages"])
+                sink.put({'type': 'stage1_complete', 'data': stage1_results})
+
+                activity.stage.set("stage2")
+                sink.put({'type': 'stage2_start'})
+                stage2_results, label_to_model = await stage2_collect_rankings(query, stage1_results, conversation["messages"])
+                aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+                sink.put({'type': 'stage2_complete', 'data': stage2_results,
+                          'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})
+
+                activity.stage.set("stage3")
+                sink.put({'type': 'stage3_start'})
+                stage3_result = await stage3_synthesize_final(query, stage1_results, stage2_results, conversation["messages"])
+                activity.stage.set("memory")
+                save_id = activity.new_id()
+                activity.emit("memory_save", id=save_id, status="running")
+                await asyncio.to_thread(knowledge.save, request.content, stage3_result)
+                activity.emit("memory_save", id=save_id, status="done")
+                sink.put({'type': 'stage3_complete', 'data': stage3_result})
+
+                if title_task:
+                    title = await title_task
+                    storage.update_conversation_title(conversation_id, title)
+                    activity.stage.set("title")
+                    activity.emit("title", title=title)
+                    sink.put({'type': 'title_complete', 'data': {'title': title}})
+
+                storage.add_assistant_message(
+                    conversation_id,
+                    stage1_results,
+                    stage2_results,
+                    stage3_result,
+                    sink.log
+                )
+                sink.put({'type': 'complete'})
+            except Exception as e:
+                sink.put({'type': 'error', 'message': str(e)})
+            finally:
+                sink.queue.put_nowait(None)
+
+        task = asyncio.create_task(pipeline())
         try:
-            # Add user message
-            storage.add_user_message(conversation_id, request.content)
-
-            # Start title generation in parallel (don't await yet)
-            title_task = None
-            if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
-
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            query = knowledge.augment(request.content)
-            async with open_workspace(conversation.get("folder") or ""):
-                stage1_results = await stage1_collect_responses(query, conversation["messages"])
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
-
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(query, stage1_results, conversation["messages"])
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
-
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(query, stage1_results, stage2_results, conversation["messages"])
-            knowledge.save(request.content, stage3_result)
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
-
-            # Wait for title generation if it was started
-            if title_task:
-                title = await title_task
-                storage.update_conversation_title(conversation_id, title)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
-
-            # Save complete assistant message
-            storage.add_assistant_message(
-                conversation_id,
-                stage1_results,
-                stage2_results,
-                stage3_result
-            )
-
-            # Send completion event
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
-
-        except Exception as e:
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            while True:
+                event = await sink.queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            task.cancel()
 
     return StreamingResponse(
         event_generator(),

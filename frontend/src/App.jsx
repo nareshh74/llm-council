@@ -101,6 +101,15 @@ function App() {
       // Send message with streaming
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         switch (eventType) {
+          case 'activity':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const last = messages[messages.length - 1];
+              messages[messages.length - 1] = { ...last, activity: [...(last.activity || []), event] };
+              return { ...prev, messages };
+            });
+            break;
+
           case 'stage1_start':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];
