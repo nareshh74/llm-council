@@ -71,7 +71,7 @@ function App() {
     setIsLoading(true);
     try {
       // Optimistically add user message to UI
-      const userMessage = { role: 'user', content };
+      const userMessage = { role: 'user', content, created_at: new Date().toISOString() };
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -80,6 +80,7 @@ function App() {
       // Create a partial assistant message that will be updated progressively
       const assistantMessage = {
         role: 'assistant',
+        created_at: new Date().toISOString(),
         stage1: null,
         stage2: null,
         stage3: null,

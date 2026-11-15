@@ -45,6 +45,11 @@ def stack(tmp_path_factory):
     if _up(8001):
         pytest.skip("port 8001 busy; stop the running backend first")
     base = tmp_path_factory.mktemp("e2e")
+    style = base / "startup_skills" / "e2e-style"
+    style.mkdir(parents=True)
+    (style / "SKILL.md").write_text(
+        "---\nname: e2e-style\ndescription: test style\n---\n"
+        "Always end every reply you write with the exact token ZEBRA-STYLE-OK on its own final line.\n")
     folders = {}
     for name, code in (("alpha", "PELICAN-77"), ("beta", "WALRUS-42")):
         d = base / name
@@ -55,6 +60,7 @@ def stack(tmp_path_factory):
     archify = Path.home() / ".claude/skills/archify/bin/archify.mjs"
     env = {**os.environ, "COUNCIL_DATA_DIR": str(base / "data"), "HOME": str(base), "USERPROFILE": str(base),
            "WIKI_MEMORY": "0", "THINKING_SKILLS": "0", "ARCHIFY_BIN": str(archify),
+           "STARTUP_SKILLS_DIR": str(base / "startup_skills"), "STARTUP_SKILLS": "e2e-style",
            "COUNCIL_DIAGRAM_DIR": str(base / "diagrams")}
     env.pop("COUNCIL_FOLDER", None)
     procs = [subprocess.Popen([sys.executable, "-m", "backend.main"], cwd=ROOT, env=env,
@@ -208,3 +214,63 @@ def test_chairman_draws_a_diagram_that_renders(page, stack):
 def test_diagram_route_rejects_bad_ids(stack):
     assert httpx.get(API + "/api/diagrams/..%2f..%2fsecret").status_code == 404
     assert httpx.get(API + "/api/diagrams/000000000000").status_code == 404
+
+
+def _send(page, text, nth):
+    page.locator(".message-input").fill(text)
+    page.get_by_role("button", name="Send").click()
+    expect(page.locator(".stage3 .final-text")).to_have_count(nth, timeout=280_000)
+
+
+def test_time_title_and_search(page, stack):
+    page.goto(UI)
+    page.get_by_role("button", name="+ New Conversation").click()
+    _send(page, "Explain how a zebra crossing keeps pedestrians safe. One short paragraph.", 1)
+    _send(page, "Now explain the same for a pelican crossing. One short paragraph.", 2)
+
+    times = page.locator(".message-time")
+    expect(times).to_have_count(4)
+    for t in times.all_inner_texts():
+        assert re.search(r"\d{1,2}:\d{2}", t), t
+
+    page.reload()
+    item = page.locator(".conversation-item", has_text=re.compile("crossing", re.I)).first
+    expect(item).to_be_visible(timeout=60_000)
+    title = item.locator(".conversation-title").inner_text()
+    assert title and title != "New Conversation" and len(title) <= 50
+
+    other = page.get_by_role("button", name="+ New Conversation")
+    other.click()
+    _send(page, "Reply with the single word banana.", 1)
+    page.reload()
+
+    box = page.get_by_placeholder("Search conversations")
+    box.fill("crossing")
+    expect(page.locator(".conversation-item")).to_have_count(1)
+    box.fill("no-such-title-xyz")
+    expect(page.locator(".conversation-item")).to_have_count(0)
+    expect(page.locator(".no-conversations")).to_contain_text("No matching")
+    box.fill("")
+    assert page.locator(".conversation-item").count() >= 2
+
+    page.locator(".conversation-item", has_text=re.compile("crossing", re.I)).first.click()
+    expect(page.locator(".message-group")).to_have_count(4)
+    inbox = page.get_by_placeholder("Search in this conversation")
+    inbox.fill("pelican")
+    expect(page.locator(".message-group.search-hit").first).to_be_visible()
+    assert page.locator(".message-search-count").inner_text().endswith("of " + str(page.locator(".message-group.search-hit").count()))
+    inbox.fill("zzz-not-here")
+    expect(page.locator(".message-search-count")).to_have_text("No matches")
+    expect(page.locator(".message-group.search-hit")).to_have_count(0)
+    inbox.fill("")
+    expect(page.locator(".message-search-count")).to_have_count(0)
+
+
+def test_startup_skills_apply_on_every_turn(page, stack):
+    page.goto(UI)
+    page.get_by_role("button", name="+ New Conversation").click()
+    _send(page, "What is 2+2? Answer in one short sentence.", 1)
+    _send(page, "What is 3+3? Answer in one short sentence.", 2)
+    finals = page.locator(".stage3 .final-text")
+    for i in range(2):
+        assert "ZEBRA-STYLE-OK" in finals.nth(i).inner_text(), f"turn {i + 1} missed the startup skill"

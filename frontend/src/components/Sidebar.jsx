@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -6,6 +7,12 @@ export default function Sidebar({
   onSelectConversation,
   onNewConversation,
 }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? conversations.filter((c) => (c.title || 'New Conversation').toLowerCase().includes(q))
+    : conversations;
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -13,13 +20,22 @@ export default function Sidebar({
         <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>
+        <input
+          className="conversation-search"
+          type="search"
+          placeholder="Search conversations"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
 
       <div className="conversation-list">
-        {conversations.length === 0 ? (
-          <div className="no-conversations">No conversations yet</div>
+        {shown.length === 0 ? (
+          <div className="no-conversations">
+            {conversations.length === 0 ? 'No conversations yet' : 'No matching conversations'}
+          </div>
         ) : (
-          conversations.map((conv) => (
+          shown.map((conv) => (
             <div
               key={conv.id}
               className={`conversation-item ${

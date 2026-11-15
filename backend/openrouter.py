@@ -5,6 +5,7 @@ import json
 import httpx
 from typing import List, Dict, Any, Optional
 from .thinking import PROMPT as THINKING
+from .startup import PROMPT as STARTUP
 from .workspace import current as workspace
 from . import diagrams
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
@@ -17,7 +18,8 @@ async def query_model(
     messages: List[Dict[str, str]],
     timeout: float = 120.0,
     use_tools: bool = False,
-    draw: bool = False
+    draw: bool = False,
+    style: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -28,6 +30,7 @@ async def query_model(
         timeout: Request timeout in seconds
         use_tools: Give the model the workspace folder context and tools (if a folder is set)
         draw: Give the model the draw_diagram tool
+        style: Add the startup skills (used for the calls that write the answer the user reads)
 
     Returns:
         Response dict with 'content' and optional 'reasoning_details', or None if failed
@@ -39,7 +42,7 @@ async def query_model(
 
     ws = workspace.get() if use_tools else None
     drawn = []
-    system = "\n\n".join(x for x in (THINKING, ws and ws.context) if x)
+    system = "\n\n".join(x for x in (THINKING, STARTUP if style else "", ws and ws.context) if x)
     if system:
         messages = [{"role": "system", "content": system}] + messages
 
@@ -93,7 +96,8 @@ async def query_model(
 async def query_models_parallel(
     models: List[str],
     messages: List[Dict[str, str]],
-    use_tools: bool = False
+    use_tools: bool = False,
+    style: bool = False
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
@@ -102,10 +106,11 @@ async def query_models_parallel(
         models: List of OpenRouter model identifiers
         messages: List of message dicts to send to each model
         use_tools: Pass through to query_model
+        style: Pass through to query_model
 
     Returns:
         Dict mapping model identifier to response dict (or None if failed)
     """
-    tasks = [query_model(model, messages, use_tools=use_tools) for model in models]
+    tasks = [query_model(model, messages, use_tools=use_tools, style=style) for model in models]
     responses = await asyncio.gather(*tasks)
     return {model: response for model, response in zip(models, responses)}

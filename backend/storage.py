@@ -79,6 +79,17 @@ def save_conversation(conversation: Dict[str, Any]):
         json.dump(conversation, f, indent=2)
 
 
+def _list_title(data: Dict[str, Any]) -> str:
+    """The saved title, or the first words of the first message when no real title was ever saved."""
+    title = data.get("title") or "New Conversation"
+    if title == "New Conversation":
+        first = next((m["content"] for m in data["messages"] if m["role"] == "user"), "")
+        if first:
+            line = " ".join(first.split())
+            return (line[:47] + "...") if len(line) > 50 else line
+    return title
+
+
 def list_conversations() -> List[Dict[str, Any]]:
     """
     List all conversations (metadata only).
@@ -98,7 +109,7 @@ def list_conversations() -> List[Dict[str, Any]]:
                 conversations.append({
                     "id": data["id"],
                     "created_at": data["created_at"],
-                    "title": data.get("title", "New Conversation"),
+                    "title": _list_title(data),
                     "folder": data.get("folder"),
                     "message_count": len(data["messages"])
                 })
@@ -123,7 +134,8 @@ def add_user_message(conversation_id: str, content: str):
 
     conversation["messages"].append({
         "role": "user",
-        "content": content
+        "content": content,
+        "created_at": datetime.utcnow().isoformat()
     })
 
     save_conversation(conversation)
@@ -152,7 +164,8 @@ def add_assistant_message(
         "role": "assistant",
         "stage1": stage1,
         "stage2": stage2,
-        "stage3": stage3
+        "stage3": stage3,
+        "created_at": datetime.utcnow().isoformat()
     })
 
     save_conversation(conversation)

@@ -63,7 +63,7 @@ async def stage1_collect_responses(user_query: str, history: List[Dict[str, Any]
     messages = history_messages(history) + [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages, use_tools=True)
+    responses = await query_models_parallel(COUNCIL_MODELS, messages, use_tools=True, style=True)
 
     # Format results
     stage1_results = []
@@ -206,7 +206,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages, draw=True)
+    response = await query_model(CHAIRMAN_MODEL, messages, draw=True, style=True)
 
     if response is None:
         # Fallback if chairman fails
@@ -302,6 +302,12 @@ def calculate_aggregate_rankings(
     return aggregate
 
 
+def title_from_text(text: str) -> str:
+    """A title made of the first words of a message."""
+    line = " ".join(text.split())
+    return (line[:47] + "...") if len(line) > 50 else (line or "New Conversation")
+
+
 async def generate_conversation_title(user_query: str) -> str:
     """
     Generate a short title for a conversation based on the first user message.
@@ -321,14 +327,11 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model(CHAIRMAN_MODEL, messages, timeout=30.0)
 
-    if response is None:
-        # Fallback to a generic title
-        return "New Conversation"
-
-    title = response.get('content', 'New Conversation').strip()
+    title = ((response or {}).get('content') or '').strip()
+    if not title:
+        return title_from_text(user_query)
 
     # Clean up the title - remove quotes, limit length
     title = title.strip('"\'')
