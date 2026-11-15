@@ -145,7 +145,8 @@ def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    stage3: Dict[str, Any],
+    activity: Optional[List[Dict[str, Any]]] = None
 ):
     """
     Add an assistant message with all 3 stages to a conversation.
@@ -155,6 +156,7 @@ def add_assistant_message(
         stage1: List of individual model responses
         stage2: List of model rankings
         stage3: Final synthesized response
+        activity: Steps taken while answering (LLM calls, tool calls), shown in the chat
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
@@ -165,7 +167,8 @@ def add_assistant_message(
         "stage1": stage1,
         "stage2": stage2,
         "stage3": stage3,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
+        **({"activity": activity} if activity else {})
     })
 
     save_conversation(conversation)

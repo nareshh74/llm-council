@@ -4,6 +4,7 @@ import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
 import FolderPicker from './FolderPicker';
+import Activity from './Activity';
 import './ChatInterface.css';
 
 function formatTime(ts) {
@@ -156,6 +157,11 @@ export default function ChatInterface({
               ) : (
                 <div className="assistant-message">
                   <div className="message-label">LLM Council</div>
+
+                  <Activity
+                    events={msg.activity}
+                    live={isLoading && index === conversation.messages.length - 1}
+                  />
 
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (

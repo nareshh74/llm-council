@@ -274,3 +274,34 @@ def test_startup_skills_apply_on_every_turn(page, stack):
     finals = page.locator(".stage3 .final-text")
     for i in range(2):
         assert "ZEBRA-STYLE-OK" in finals.nth(i).inner_text(), f"turn {i + 1} missed the startup skill"
+
+
+def test_activity_streams_live_into_the_conversation(page, stack):
+    page.goto(UI)
+    page.get_by_role("button", name="+ New Conversation").click()
+    _pick(page, "alpha")
+    page.locator(".message-input").fill(Q)
+    page.get_by_role("button", name="Send").click()
+
+    activity = page.locator(".activity")
+    expect(activity).to_have_count(1, timeout=60_000)
+    expect(activity.locator(".activity-row.llm").first).to_be_visible(timeout=60_000)
+    expect(page.locator(".stage3 .final-text")).to_have_count(0)
+    assert page.locator(".loading-indicator").count() == 1, "the run should still be in progress"
+
+    expect(activity.locator(".activity-row.tool").first).to_be_visible(timeout=120_000)
+    expect(activity.locator(".activity-row.tool").filter(has_text="read_file").first).to_be_visible()
+
+    expect(page.locator(".stage3 .final-text")).to_have_count(1, timeout=280_000)
+    assert "PELICAN-77" in page.locator(".stage3 .final-text").inner_text()
+    expect(activity.locator(".activity-row.running")).to_have_count(0, timeout=30_000)
+    expect(activity).not_to_have_attribute("open", "")
+    activity.locator("summary").first.click()
+    expect(activity).to_have_attribute("open", "")
+    for stage in ("Stage 1", "Stage 2", "Stage 3"):
+        expect(activity.get_by_text(stage, exact=False).first).to_be_visible()
+
+    page.reload()
+    page.locator(".conversation-item", has_text="alpha").first.click()
+    expect(page.locator(".activity")).to_have_count(1)
+    expect(page.locator(".activity .activity-row.llm").first).to_be_attached()
