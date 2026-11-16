@@ -7,8 +7,10 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from .readguard import resolve, denied
 FOLDER = os.getenv("COUNCIL_FOLDER", "")
 MAX_OUT = 20000
+MAX_SCAN = 5000
 current: ContextVar = ContextVar("workspace", default=None)
 
 
@@ -18,9 +20,9 @@ def _fn(name, desc, props, req):
 
 
 BUILTIN = [
-    _fn("list_dir", "List files in a folder (relative to the workspace root).", ["path"], []),
-    _fn("read_file", "Read a text file (relative to the workspace root).", ["path"], ["path"]),
-    _fn("search", "Regex search across workspace text files; returns file:line:text.", ["pattern"], ["pattern"]),
+    _fn("list_dir", "List a folder. The path is relative to the workspace root, or absolute to reach anywhere on the machine.", ["path"], []),
+    _fn("read_file", "Read a text file. The path is relative to the workspace root, or absolute to reach anywhere on the machine.", ["path"], ["path"]),
+    _fn("search", "Regex search across text files under a folder (default: the workspace root); returns file:line:text.", ["pattern", "path"], ["pattern"]),
     _fn("read_skill", "Load the full instructions of a named skill.", ["name"], ["name"]),
 ]
 
@@ -34,10 +36,7 @@ class Workspace:
         self.context = ""
 
     def _safe(self, p: str) -> Path:
-        full = (self.root / (p or ".")).resolve()
-        if not full.is_relative_to(self.root):
-            raise ValueError("path outside workspace")
-        return full
+        return resolve(self.root, p)
 
     async def load(self, stack: AsyncExitStack) -> None:
         parts = []
@@ -56,7 +55,9 @@ class Workspace:
         if lines:
             parts.append("Workspace skills (call read_skill to load one when relevant):\n" + "\n".join(lines))
         parts.insert(0, f"You are working in the folder '{self.root.name}'. "
-                        "Use list_dir, read_file and search (read-only) to inspect it when relevant.")
+                        "Use list_dir, read_file and search (read-only) to inspect it when relevant. "
+                        "Relative paths start there. Use an absolute path to read anywhere else on the machine; "
+                        "files that look like secrets (keys, .env, credentials) are blocked.")
         self.context = "\n\n".join(parts)
         await self._load_mcp(stack)
 
@@ -96,18 +97,25 @@ class Workspace:
                 items = sorted(self._safe(args.get("path", "")).iterdir())
                 out = "\n".join(p.name + ("/" if p.is_dir() else "") for p in items)
             elif name == "read_file":
-                out = self._safe(args["path"]).read_text(encoding="utf-8", errors="replace")
+                with open(self._safe(args["path"]), encoding="utf-8", errors="replace") as fh:
+                    out = fh.read(MAX_OUT)
             elif name == "search":
-                rx, hits = re.compile(args["pattern"]), []
+                rx, hits, scanned = re.compile(args["pattern"]), [], 0
+                base = self._safe(args.get("path", ""))
                 skip = (".git", "node_modules", ".venv", "__pycache__")
-                for f in self.root.rglob("*"):
-                    if f.is_file() and not any(p in skip for p in f.parts) and f.stat().st_size < 500_000:
+                files = [base] if base.is_file() else base.rglob("*")
+                for f in files:
+                    rel = f.relative_to(base) if f != base else Path(f.name)
+                    if f.is_file() and not any(p in skip for p in rel.parts) and f.stat().st_size < 500_000 and not denied(f.resolve()):
+                        scanned += 1
                         for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                             if rx.search(line):
-                                hits.append(f"{f.relative_to(self.root)}:{i}:{line[:200]}")
-                    if len(hits) > 200:
+                                hits.append(f"{rel}:{i}:{line[:200]}")
+                    if len(hits) > 200 or scanned >= MAX_SCAN:
                         break
                 out = "\n".join(hits[:200])
+                if scanned >= MAX_SCAN:
+                    out += f"\n[stopped after scanning {MAX_SCAN} files; search a narrower folder]"
             elif name == "read_skill":
                 out = self.skills[args["name"]].read_text(encoding="utf-8", errors="replace")
             else:
