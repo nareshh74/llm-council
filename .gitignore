@@ -11,9 +11,11 @@ wheels/
 
 # Keys and secrets
 .env
+.mcp.json
 
 # Data files
 data/
+*.log
 
 # Frontend
 frontend/node_modules/

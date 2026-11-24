@@ -44,7 +44,16 @@ Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purcha
 
 ### 3. Configure Models (Optional)
 
-Edit `backend/config.py` to customize the council:
+Set optional overrides in `.env` to customize the council without editing the
+shared defaults in `backend/config.py`:
+
+```dotenv
+COUNCIL_MODELS=openai/gpt-5.1,google/gemini-3-pro-preview,anthropic/claude-sonnet-4.5,x-ai/grok-4
+CHAIRMAN_MODEL=google/gemini-3-pro-preview
+```
+
+`COUNCIL_MODELS` is comma-separated. When these variables are unset, the defaults
+in `backend/config.py` remain in effect. For example:
 
 ```python
 COUNCIL_MODELS = [
@@ -78,6 +87,24 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+### Windows
+
+After installing dependencies and creating `.env`, run from PowerShell:
+
+```powershell
+.\start-windows.ps1
+```
+
+The launcher uses the checkout's `.venv` and `frontend\node_modules`, starts
+hidden backend/frontend processes on loopback ports 8001 and 5173, and writes
+ignored `*.log` files in the checkout. Running it again reuses healthy services;
+occupied ports with unhealthy or unrelated services cause an error. Restart the
+services after changing `.env` or backend code.
+
+For sign-in startup, configure a Windows Task Scheduler logon task to run
+`powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "<checkout>\start-windows.ps1"`.
+Use the checkout as its working directory. This runs after sign-in, not before.
 
 ## Tech Stack
 
