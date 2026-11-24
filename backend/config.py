@@ -16,9 +16,10 @@ COUNCIL_MODELS = [
     "gh/claude-sonnet-5.5",
     "gh/gpt-6.1-terra",
 ]
+COUNCIL_MODELS = [model.strip() for model in os.getenv("COUNCIL_MODELS", ",".join(COUNCIL_MODELS)).split(",")]
 
 # Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "gh/gemini-4-argon"
+CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL", "gh/gemini-4-argon")
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = (
