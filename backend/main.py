@@ -9,6 +9,7 @@ import uuid
 import json
 import asyncio
 
+from . import otel_lite
 from . import storage
 from . import knowledge
 from .workspace import open_workspace, resolve_folder, browse
@@ -17,6 +18,9 @@ from . import activity
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
+otel_lite.init("llm-council")
+otel_lite.install_log_correlation()
+app.add_middleware(otel_lite.TraceMiddleware)
 
 # Enable CORS for local development
 app.add_middleware(
