@@ -2,9 +2,12 @@
 
 import asyncio
 import json
+import sys
 import time
 import httpx
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
+from . import otel_lite
 from .thinking import PROMPT as THINKING
 from .startup import PROMPT as STARTUP
 from .workspace import current as workspace
@@ -61,8 +64,11 @@ async def query_model(
                 call_id, t0 = new_id(), time.perf_counter()
                 emit("llm", id=call_id, model=model, round=i + 1, status="running")
                 try:
-                    response = await client.post(OPENROUTER_API_URL, headers=headers, json=payload)
-                    response.raise_for_status()
+                    with otel_lite.span("llm.chat", 3, {"gen_ai.operation.name": "chat", "gen_ai.request.model": model, "http.request.method": "POST", "url.path": urlparse(OPENROUTER_API_URL).path}) as rec:
+                        tp = otel_lite.get_traceparent()
+                        response = await client.post(OPENROUTER_API_URL, headers={**headers, **({"traceparent": tp} if tp else {})}, json=payload)
+                        rec["http.response.status_code"] = response.status_code
+                        response.raise_for_status()
                 except Exception as e:
                     emit("llm", id=call_id, model=model, round=i + 1, status="error",
                          error=clip(e, 160), ms=int((time.perf_counter() - t0) * 1000))
@@ -94,7 +100,7 @@ async def query_model(
                             drawn.append(did)
                             out = f"Diagram created. Reference it in your answer as ![caption](diagram:{did})"
                         except ValueError as e:
-                            print(f"draw_diagram failed: {e} | args={json.dumps(args)[:600]}")
+                            print(f"draw_diagram failed: {e} | args={json.dumps(args)[:600]}", file=sys.stderr)
                             out = f"error: {e}"
                     else:
                         out = await ws.call(name, args) if ws else f"unknown tool {name}"
@@ -107,7 +113,7 @@ async def query_model(
                 ] + results
 
     except Exception as e:
-        print(f"Error querying model {model}: {e}")
+        print(f"Error querying model {model}: {e}", file=sys.stderr)
         return None
 
 
