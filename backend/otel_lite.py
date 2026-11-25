@@ -150,6 +150,6 @@ def install_log_correlation() -> None:
         c = _ctx.get()
         r.trace_id, r.span_id = (c[0], c[1]) if c else ("", "")
         if c:
-            r.msg, r.args = f"{r.getMessage()} trace_id={c[0]} span_id={c[1]}", None
+            r.msg = f"{r.msg} trace_id={c[0]} span_id={c[1]}"
         return r
     logging.setLogRecordFactory(factory)
